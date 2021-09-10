@@ -1,5 +1,5 @@
-*./idea
-*./vs
-*./bin
-*./obj
+.idea/
+.vs/
+bin/
+obj/
 modded-chromedriver.exe
