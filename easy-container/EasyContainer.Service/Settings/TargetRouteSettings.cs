@@ -2,7 +2,7 @@
 {
     using Lib;
 
-    public class TargetRouteSetting: Setting
+    public class TargetRouteSettings: Setting
     {
         // IList<RouteSettings>
     }

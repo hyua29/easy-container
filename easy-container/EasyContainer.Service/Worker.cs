@@ -14,9 +14,9 @@ namespace EasyContainer.Service
     {
         private readonly ILogger<Worker> _logger;
 
-        private readonly SettingWrapper<TargetRouteSetting> _targetRouteWrapper;
+        private readonly SettingWrapper<TargetRouteSettings> _targetRouteWrapper;
 
-        public Worker(ILogger<Worker> logger, SettingWrapper<TargetRouteSetting> targetRouteWrapper)
+        public Worker(ILogger<Worker> logger, SettingWrapper<TargetRouteSettings> targetRouteWrapper)
         {
             _logger = logger;
             _targetRouteWrapper = targetRouteWrapper;

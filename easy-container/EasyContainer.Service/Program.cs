@@ -28,8 +28,8 @@ namespace EasyContainer.Service
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddSettingDebouncer();
-                    services.MonitorSetting<FreightSmartSetting>();
-                    services.MonitorSetting<TargetRouteSetting>();
+                    services.MonitorSetting<FreightSmartSettings>();
+                    services.MonitorSetting<TargetRouteSettings>();
 
                     services.AddHostedService<Worker>();
                 });

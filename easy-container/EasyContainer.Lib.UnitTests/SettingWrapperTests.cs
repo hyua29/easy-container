@@ -9,10 +9,10 @@
     using NUnit.Framework;
 
     [TestFixture]
-    public class ConfigWrapperTests
+    public class SettingWrapperTests
     {
         [Test]
-        public async Task MonitorConfig_UpdatingSettings1_SettingsIsNotReloaded()
+        public async Task OnReload_UpdatingSettings_SettingsReloadedIfNotChanged()
         {
             // Pre-conditions
             Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Production");

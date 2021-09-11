@@ -2,7 +2,7 @@
 {
     using Lib;
 
-    public class FreightSmartSetting : Setting
+    public class FreightSmartSettings : Setting
     {
         public string Username { get; set; }
 
