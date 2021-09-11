@@ -1,5 +1,7 @@
-.idea/
-.vs/
-bin/
-obj/
+**.idea/
+**.vs/
+**bin/
+**obj/
+**logs/
+**DotSettings.user
 modded-chromedriver.exe
