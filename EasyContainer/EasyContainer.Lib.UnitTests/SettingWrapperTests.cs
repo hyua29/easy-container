@@ -38,8 +38,8 @@
             };
 
             // Action
-            configWrapper1.ReloadIfDifferent(config);
-            await configWrapper1.ReloadIfDifferentAsync(config).ConfigureAwait(false);
+            configWrapper1.Reload(config);
+            await configWrapper1.ReloadAsync(config).ConfigureAwait(false);
 
             // Post-conditions
             Assert.That(reloadCount, Is.EqualTo(0));
@@ -49,7 +49,7 @@
             var originalMessage = config.GetValue<string>("MySettings1:Message");
             AppSettings.AddOrUpdateAppSetting("MySettings1:Message", $"{originalMessage}-Updated-1");
             await Task.Delay(500).ConfigureAwait(false);
-            configWrapper1.ReloadIfDifferent(config);
+            configWrapper1.Reload(config);
 
             // Post-conditions
             Assert.That(reloadCount, Is.EqualTo(1));
@@ -58,7 +58,7 @@
             // Action
             AppSettings.AddOrUpdateAppSetting("MySettings1:Message", $"{originalMessage}-Updated-2");
             await Task.Delay(500).ConfigureAwait(false);
-            await configWrapper1.ReloadIfDifferentAsync(config).ConfigureAwait(false);
+            await configWrapper1.ReloadAsync(config).ConfigureAwait(false);
 
             // Post-conditions
             Assert.That(reloadAsyncCount, Is.EqualTo(Interlocked.Read(ref reloadAsyncCount)));

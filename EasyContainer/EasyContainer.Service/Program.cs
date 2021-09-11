@@ -17,7 +17,7 @@ namespace EasyContainer.Service
             CreateHostBuilder(args).Build().Run();
         }
 
-        public static IHostBuilder CreateHostBuilder(string[] args)
+        private static IHostBuilder CreateHostBuilder(string[] args)
         {
             return Host.CreateDefaultBuilder(args)
                 .ConfigureLogging(logBuilder =>
@@ -27,7 +27,6 @@ namespace EasyContainer.Service
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
-                    services.AddSettingDebouncer();
                     services.MonitorSetting<FreightSmartSettings>();
                     services.MonitorSetting<TargetRouteSettings>();
 

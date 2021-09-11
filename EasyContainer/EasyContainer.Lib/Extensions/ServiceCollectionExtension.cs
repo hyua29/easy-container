@@ -7,32 +7,28 @@
 
     public static class ServiceCollectionExtension
     {
-        public static void AddSettingDebouncer(this IServiceCollection serviceCollection, TimeSpan? pollInterval = null)
-        {
-            serviceCollection.AddSingleton<ConfigEventDebouncer>(provider =>
-            {
-                var config = provider.GetRequiredService<IConfiguration>();
-                var logger = provider.GetRequiredService<ILogger<ConfigEventDebouncer>>();
-                var debouncer = new ConfigEventDebouncer(config, logger, pollInterval);
-
-                return debouncer;
-            });
-        }
-
-        public static void MonitorSetting<T>(this IServiceCollection serviceCollection)
+        public static void MonitorSetting<T>(this IServiceCollection serviceCollection, TimeSpan? debounceDuration = null)
             where T : Setting, new()
         {
-            serviceCollection.AddSingleton<SettingWrapper<T>>(provider =>
+            serviceCollection.AddSingleton<IConfigEventWatcher<T>>(provider =>
             {
-                var logger = provider.GetRequiredService<ILogger<SettingWrapper<T>>>();
+                var config = provider.GetRequiredService<IConfiguration>();
+                var logger = provider.GetRequiredService<ILogger<IConfigEventWatcher<T>>>();
+
+                return new ConfigEventWatcher<T>(config, logger, debounceDuration);
+            });
+
+            serviceCollection.AddSingleton<ISettingWrapper<T>>(provider =>
+            {
+                var logger = provider.GetRequiredService<ILogger<ISettingWrapper<T>>>();
                 var config = provider.GetRequiredService<IConfiguration>();
 
                 var configWrapper = new SettingWrapper<T>(logger, new T());
 
-                configWrapper.ReloadIfDifferent(config);
+                configWrapper.Reload(config);
 
-                var configDebouncer = provider.GetRequiredService<ConfigEventDebouncer>();
-                configDebouncer.Event += (o, args) => configWrapper.ReloadIfDifferentAsync(config);
+                var configDebouncer = provider.GetRequiredService<IConfigEventWatcher<T>>();
+                configDebouncer.Event += (o, args) => configWrapper.Reload(config);
 
                 return configWrapper;
             });

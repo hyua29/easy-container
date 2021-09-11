@@ -3,6 +3,7 @@ namespace EasyContainer.Lib.UnitTests
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using Extensions;
     using Microsoft.Extensions.Configuration;
@@ -46,9 +47,8 @@ namespace EasyContainer.Lib.UnitTests
                 .ConfigureLogging(builder => builder.AddConsole())
                 .ConfigureServices((hostContext, services) =>
                 {
-                    services.AddSettingDebouncer(TimeSpan.FromMilliseconds(500));
-                    services.MonitorSetting<MySettings1>();
-                    services.MonitorSetting<MySettings2>();
+                    services.MonitorSetting<MySettings1>(TimeSpan.FromMilliseconds(200));
+                    services.MonitorSetting<MySettings2>(TimeSpan.FromMilliseconds(200));
                 });
         }
 
@@ -57,15 +57,16 @@ namespace EasyContainer.Lib.UnitTests
         {
             var config = _host.Services.GetRequiredService<IConfiguration>();
 
-            var configWrapper1 = _host.Services.GetRequiredService<SettingWrapper<MySettings1>>();
+            var configWrapper1 = _host.Services.GetRequiredService<ISettingWrapper<MySettings1>>();
             Assert.That(configWrapper1.Settings.Message, Is.EqualTo(config.GetValue<string>("MySettings1:Message")));
             Assert.That(configWrapper1.Settings.MySettings1Nested.Message,
                 Is.EqualTo(config.GetValue<string>("MySettings1:MySettings1Nested:Message")));
 
-            var configWrapper2 = _host.Services.GetRequiredService<SettingWrapper<MySettings2>>();
+            var configWrapper2 = _host.Services.GetRequiredService<ISettingWrapper<MySettings2>>();
             Assert.That(configWrapper2.Settings.Message, Is.EqualTo(config.GetValue<string>("MySettings2:Message")));
             var mySettings2NestedList = new List<MySettings2Nested>();
             config.GetSection("MySettings2:MySettings2Nested").Bind(mySettings2NestedList);
+
             Assert.That(configWrapper2.Settings.MySettings2Nested.Count, Is.EqualTo(mySettings2NestedList.Count));
             configWrapper2.Settings.MySettings2Nested.ForEach(p =>
             {
@@ -74,13 +75,13 @@ namespace EasyContainer.Lib.UnitTests
         }
 
         [Test]
-        public async Task MonitorSetting_UpdateAppSettingsJson_SettingObjectsAreSynced()
+        public void MonitorSetting_UpdateAppSettingsJson_SettingObjectsAreSynced()
         {
             var config = _host.Services.GetRequiredService<IConfiguration>();
             var message1 = config.GetValue<string>("MySettings1:Message");
             var message2 = config.GetValue<string>("MySettings2:Message");
-            var configWrapper1 = _host.Services.GetRequiredService<SettingWrapper<MySettings1>>();
-            var configWrapper2 = _host.Services.GetRequiredService<SettingWrapper<MySettings2>>();
+            var configWrapper1 = _host.Services.GetRequiredService<ISettingWrapper<MySettings1>>();
+            var configWrapper2 = _host.Services.GetRequiredService<ISettingWrapper<MySettings2>>();
 
             Assert.That(configWrapper1.Settings.Message, Is.EqualTo(message1));
             Assert.That(configWrapper2.Settings.Message, Is.EqualTo(message2));
@@ -90,13 +91,25 @@ namespace EasyContainer.Lib.UnitTests
             AppSettings.AddOrUpdateAppSetting("MySettings1:Message", newMessage1);
             AppSettings.AddOrUpdateAppSetting("MySettings2:Message", newMessage2);
 
-            await Task.Delay(1500).ConfigureAwait(false);
+            var mySetting1Reset = new ManualResetEventSlim();
+            var mySettings1Debouncer = _host.Services.GetRequiredService<IConfigEventWatcher<MySettings1>>();
+            mySettings1Debouncer.Event += (o, args) =>
+            {
+                Assert.That(config.GetValue<string>("MySettings1:Message"), Is.EqualTo(newMessage1));
+                Assert.That(configWrapper1.Settings.Message, Is.EqualTo(newMessage1));
+                mySetting1Reset.Set();
+            };
+            mySetting1Reset.Wait(TimeSpan.FromSeconds(3));
 
-            Assert.That(config.GetValue<string>("MySettings1:Message"), Is.EqualTo(newMessage1));
-            Assert.That(configWrapper1.Settings.Message, Is.EqualTo(newMessage1));
-
-            Assert.That(config.GetValue<string>("MySettings2:Message"), Is.EqualTo(newMessage2));
-            Assert.That(configWrapper2.Settings.Message, Is.EqualTo(newMessage2));
+            var mySetting2Reset = new ManualResetEventSlim();
+            var mySettings2Debouncer = _host.Services.GetRequiredService<IConfigEventWatcher<MySettings1>>();
+            mySettings2Debouncer.Event += (o, args) =>
+            {
+                Assert.That(config.GetValue<string>("MySettings2:Message"), Is.EqualTo(newMessage2));
+                Assert.That(configWrapper2.Settings.Message, Is.EqualTo(newMessage2));
+                mySetting2Reset.Set();
+            };
+            mySetting1Reset.Wait(TimeSpan.FromSeconds(3));
 
             AppSettings.AddOrUpdateAppSetting("MySettings1:Message", message1);
             AppSettings.AddOrUpdateAppSetting("MySettings2:Message", message2);

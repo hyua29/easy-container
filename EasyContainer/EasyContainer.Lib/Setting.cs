@@ -1,8 +1,11 @@
 ﻿namespace EasyContainer.Lib
 {
     using System;
+    using System.Collections;
+    using System.Collections.Generic;
     using System.Reflection;
     using System.Text;
+    using Extensions;
 
     public interface ISetting
     {
@@ -42,7 +45,18 @@
 
                 object value = info.GetValue(this) ?? "(null)";
 
-                if (value is Setting s)
+                if (value is IList list)
+                {
+                    if (list is IList<Setting> settingList)
+                    {
+                        settingList.ForEach(i => sb.Append($"{info.Name}: {i.ToStringWithIndents(indents + 2)}\n"));
+                    }
+                    else
+                    {
+                        list.ForEach(o => sb.Append($"{info.Name}: {o.ToString()}\n"));
+                    }
+                }
+                else if (value is Setting s)
                 {
                     sb.Append($"{info.Name}: {s.ToStringWithIndents(indents + 2)}\n");
                 }

@@ -7,6 +7,8 @@ namespace EasyContainer.Service
     using System;
     using System.Threading;
     using System.Threading.Tasks;
+    using Lib.Extensions;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
 
@@ -14,9 +16,9 @@ namespace EasyContainer.Service
     {
         private readonly ILogger<Worker> _logger;
 
-        private readonly SettingWrapper<TargetRouteSettings> _targetRouteWrapper;
+        private readonly ISettingWrapper<TargetRouteSettings> _targetRouteWrapper;
 
-        public Worker(ILogger<Worker> logger, SettingWrapper<TargetRouteSettings> targetRouteWrapper)
+        public Worker(ILogger<Worker> logger, ISettingWrapper<TargetRouteSettings> targetRouteWrapper)
         {
             _logger = logger;
             _targetRouteWrapper = targetRouteWrapper;
@@ -27,6 +29,9 @@ namespace EasyContainer.Service
             while (!stoppingToken.IsCancellationRequested)
             {
                 _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
+                
+                _logger.LogInformation("Number of routes: {number}", _targetRouteWrapper.Settings.RouteSettings.Count);
+                
                 await Task.Delay(1000, stoppingToken).ConfigureAwait(false);
             }
         }

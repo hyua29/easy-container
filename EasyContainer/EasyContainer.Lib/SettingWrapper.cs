@@ -4,25 +4,26 @@
     using System.Threading.Tasks;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using Newtonsoft.Json;
 
     public interface ISettingWrapper<T> where T : Setting, new()
     {
         event EventHandler OnReload;
-        
+
         event AsyncEventHandler OnReloadAsync;
 
-        T Settings { get; set; }
+        T Settings { get; }
 
-        void ReloadIfDifferent(IConfiguration configuration);
-        
-        Task ReloadIfDifferentAsync(IConfiguration configuration);
+        void Reload(IConfiguration configuration);
+
+        Task ReloadAsync(IConfiguration configuration);
     }
 
     public class SettingWrapper<T> : ISettingWrapper<T> where T : Setting, new()
     {
-        private readonly ILogger<SettingWrapper<T>> _logger;
+        private readonly ILogger<ISettingWrapper<T>> _logger;
 
-        public SettingWrapper(ILogger<SettingWrapper<T>> logger, T settings)
+        public SettingWrapper(ILogger<ISettingWrapper<T>> logger, T settings)
         {
             _logger = logger;
             Settings = settings;
@@ -32,35 +33,28 @@
 
         public event AsyncEventHandler OnReloadAsync;
 
-        public T Settings { get; set; }
+        public T Settings { get; private set; }
 
-        public void ReloadIfDifferent(IConfiguration configuration)
+        public void Reload(IConfiguration configuration)
         {
             var newSettings = new T();
             configuration.Bind(typeof(T).Name, newSettings);
-            if (Settings.ToString() == newSettings.ToString())
-            {
-                return;
-            }
 
             Settings = newSettings;
 
-            _logger.LogInformation(Settings.ToString());
+            _logger.LogInformation($"\n{JsonConvert.SerializeObject(Settings)}");
+
             OnReload?.Invoke(this, EventArgs.Empty);
         }
 
-        public async Task ReloadIfDifferentAsync(IConfiguration configuration)
+        public async Task ReloadAsync(IConfiguration configuration)
         {
             var newSettings = new T();
             configuration.Bind(typeof(T).Name, newSettings);
-            if (Settings.ToString() == newSettings.ToString())
-            {
-                return;
-            }
 
             Settings = newSettings;
 
-            _logger.LogInformation(Settings.ToString());
+            _logger.LogInformation($"\n{JsonConvert.SerializeObject(Settings)}");
 
             if (OnReloadAsync != null)
             {

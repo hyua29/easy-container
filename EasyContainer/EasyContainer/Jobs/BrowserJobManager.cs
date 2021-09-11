@@ -5,11 +5,13 @@
     using System.Drawing;
     using System.Threading.Tasks;
     using Extensions;
+    using Lib;
     using Lib.Extensions;
     using Microsoft.Extensions.Logging;
     using OpenQA.Selenium;
     using OpenQA.Selenium.Chrome;
     using OpenQA.Selenium.Support.UI;
+    using AppSettings = EasyContainer.AppSettings;
 
     public interface IBrowserJobManager : IDisposable
     {

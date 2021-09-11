@@ -6,33 +6,57 @@
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Primitives;
 
-    public class ConfigEventDebouncer : EventDebouncer
+    public interface IConfigEventWatcher<T> : IDisposable where T : ISetting
     {
-        private readonly ILogger<ConfigEventDebouncer> _logger;
+        event EventHandler Event;
+    }
 
-        public ConfigEventDebouncer(IConfiguration configuration, ILogger<ConfigEventDebouncer> logger,
-            TimeSpan? timeSpan = null) : base(timeSpan)
+    public class ConfigEventWatcher<T> : BaseDisposable, IConfigEventWatcher<T> where T : ISetting
+    {
+        private readonly ILogger<IConfigEventWatcher<T>> _logger;
+
+        private readonly IEventDebouncer _debouncer;
+
+        private readonly IDisposable _changeTokenHandle;
+
+        public ConfigEventWatcher(IConfiguration configuration, ILogger<IConfigEventWatcher<T>> logger,
+            TimeSpan? debounceDuration = null)
         {
             _logger = logger;
+            _debouncer = new EventDebouncer(debounceDuration);
 
-            ChangeToken.OnChange<object>(configuration.GetReloadToken,
+            _changeTokenHandle = ChangeToken.OnChange(configuration.GetSection(typeof(T).Name).GetReloadToken,
 #pragma warning disable 4014
-                _ => InvokeEventAsync(), null);
+                InvokeEvent);
 #pragma warning restore 4014
         }
 
-        public override Task InvokeEventAsync()
+        public event EventHandler Event;
+
+        private void InvokeEvent()
+        {
+            _debouncer.InvokeEventAsync(InvokeEventImplAsync);
+        }
+
+        private async Task InvokeEventImplAsync(object o, EventArgs args)
         {
             try
             {
-                return base.InvokeEventAsync();
+                _logger.LogInformation($"Reloading {typeof(T).Name}");
+                Event?.Invoke(o, args);
             }
             catch (Exception e)
             {
                 _logger.LogError(e.Message);
                 _logger.LogError(e.StackTrace);
-                return Task.CompletedTask;
+                await Task.CompletedTask.ConfigureAwait(false);
             }
+        }
+
+        protected override void DisposeManagedResources()
+        {
+            _changeTokenHandle?.Dispose();
+            _debouncer?.Dispose();
         }
     }
 }

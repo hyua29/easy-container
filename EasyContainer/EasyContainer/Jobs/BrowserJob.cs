@@ -5,9 +5,11 @@
     using System.Drawing;
     using System.Threading;
     using System.Threading.Tasks;
+    using Lib;
     using Microsoft.Extensions.Logging;
     using OpenQA.Selenium;
     using OpenQA.Selenium.Chrome;
+    using AppSettings = EasyContainer.AppSettings;
 
     public interface IBrowserJob : IDisposable
 

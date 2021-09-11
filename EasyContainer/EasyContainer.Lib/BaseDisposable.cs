@@ -1,4 +1,4 @@
-﻿namespace EasyContainer
+﻿namespace EasyContainer.Lib
 {
     using System;
 

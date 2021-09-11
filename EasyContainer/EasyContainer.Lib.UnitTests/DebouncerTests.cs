@@ -22,17 +22,17 @@
         {
             long callCount = 0;
 
-            _eventDebouncer.Event += (o, arg) =>
+            Task AsyncEventHandler(object o, EventArgs arg)
             {
                 // ReSharper disable once AccessToModifiedClosure - Intentionally modifying callCount
                 Interlocked.Increment(ref callCount);
                 return Task.CompletedTask;
-            };
+            }
 
             for (var i = 0; i < 10; i++)
             {
 #pragma warning disable 4014
-                _eventDebouncer.InvokeEventAsync();
+                _eventDebouncer.InvokeEventAsync(AsyncEventHandler);
 #pragma warning restore 4014
             }
 
