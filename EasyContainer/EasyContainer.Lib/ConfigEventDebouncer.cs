@@ -13,13 +13,13 @@
 
     public class ConfigEventWatcher<T> : BaseDisposable, IConfigEventWatcher<T> where T : ISetting
     {
-        private readonly ILogger<IConfigEventWatcher<T>> _logger;
+        private readonly ILogger<ConfigEventWatcher<T>> _logger;
 
         private readonly IEventDebouncer _debouncer;
 
         private readonly IDisposable _changeTokenHandle;
 
-        public ConfigEventWatcher(IConfiguration configuration, ILogger<IConfigEventWatcher<T>> logger,
+        public ConfigEventWatcher(IConfiguration configuration, ILogger<ConfigEventWatcher<T>> logger,
             TimeSpan? debounceDuration = null)
         {
             _logger = logger;

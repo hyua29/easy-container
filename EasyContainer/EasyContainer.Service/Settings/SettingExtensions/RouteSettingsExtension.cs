@@ -6,8 +6,8 @@
     public static class RouteSettingsExtension
     {
         public static DateTime GetReleaseTimeDateTime(this RouteSettings routeSettings) =>
-            string.IsNullOrWhiteSpace(routeSettings.ReleaseTime)
+            string.IsNullOrWhiteSpace(routeSettings.TicketReleaseTime)
                 ? DateTime.Now
-                : SettingHelper.StringToDateTime(routeSettings.ReleaseTime, isUtc: false);
+                : SettingHelper.StringToDateTime(routeSettings.TicketReleaseTime, isUtc: false);
     }
 }

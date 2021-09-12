@@ -4,7 +4,6 @@
     using System.IO;
     using System.Reflection;
     using System.Threading.Tasks;
-    using Jobs;
     using log4net;
     using log4net.Config;
     using Microsoft.Extensions.Configuration;
@@ -28,7 +27,7 @@
 
             services.AddSingleton(config.Get<AppSettings>());
 
-            services.AddSingleton<IBrowserJobManager, BrowserJobManager>();
+            // services.AddSingleton<IBrowserJobManager, BrowserJobManager>();
 
             return services.BuildServiceProvider();
         }
@@ -37,7 +36,7 @@
         {
             await using var serviceProvider = RegisterServices();
 
-            await serviceProvider.GetRequiredService<IBrowserJobManager>().RunAsync().ConfigureAwait(true);
+            // await serviceProvider.GetRequiredService<IBrowserJobManager>().RunAsync().ConfigureAwait(true);
 
             Console.ReadKey();
         }

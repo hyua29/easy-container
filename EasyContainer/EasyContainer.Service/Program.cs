@@ -7,12 +7,12 @@ namespace EasyContainer.Service
     using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
     using Settings;
+    using TicketPurchaseJobs;
 
     public static class Program
     {
         public static void Main(string[] args)
         {
-
             GlobalContext.Properties["ApplicationName"] = Assembly.GetExecutingAssembly().GetName().Name;
             CreateHostBuilder(args).Build().Run();
         }
@@ -29,8 +29,9 @@ namespace EasyContainer.Service
                 {
                     services.MonitorSetting<FreightSmartSettings>();
                     services.MonitorSetting<TargetRouteSettings>();
+                    services.MonitorSetting<SeleniumSettings>();
 
-                    services.AddHostedService<Worker>();
+                    services.AddHostedService<TicketPurchaseJobManager>();
                 });
         }
     }

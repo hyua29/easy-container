@@ -1,12 +1,13 @@
 ﻿namespace EasyContainer.Lib
 {
     using System;
+    using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
 
-    public interface ISettingWrapper<T> where T : Setting, new()
+    public interface ISettingWrapper<T> where T : ISetting, new()
     {
         event EventHandler OnReload;
 
@@ -19,21 +20,51 @@
         Task ReloadAsync(IConfiguration configuration);
     }
 
-    public class SettingWrapper<T> : ISettingWrapper<T> where T : Setting, new()
+    public class SettingWrapper<T> : ISettingWrapper<T> where T : ISetting, new()
     {
-        private readonly ILogger<ISettingWrapper<T>> _logger;
+        private readonly ILogger<SettingWrapper<T>> _logger;
+        private readonly ReaderWriterLockSlim _settingLock;
 
-        public SettingWrapper(ILogger<ISettingWrapper<T>> logger, T settings)
+        private T _setting;
+
+        public SettingWrapper(ILogger<SettingWrapper<T>> logger, T settings)
         {
             _logger = logger;
-            Settings = settings;
+            _setting = settings;
+            _settingLock = new ReaderWriterLockSlim();
         }
 
         public event EventHandler OnReload;
 
         public event AsyncEventHandler OnReloadAsync;
 
-        public T Settings { get; private set; }
+        public T Settings
+        {
+            get
+            {
+                try
+                {
+                    _settingLock.EnterReadLock();
+                    return _setting;
+                }
+                finally
+                {
+                    _settingLock.ExitReadLock();
+                }
+            }
+            private set
+            {
+                try
+                {
+                    _settingLock.EnterWriteLock();
+                    _setting = value;
+                }
+                finally
+                {
+                    _settingLock.ExitWriteLock();
+                }
+            }
+        }
 
         public void Reload(IConfiguration configuration)
         {

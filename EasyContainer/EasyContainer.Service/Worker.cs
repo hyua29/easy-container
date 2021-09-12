@@ -1,5 +1,3 @@
-
-
 namespace EasyContainer.Service
 {
     using Lib;
@@ -7,8 +5,6 @@ namespace EasyContainer.Service
     using System;
     using System.Threading;
     using System.Threading.Tasks;
-    using Lib.Extensions;
-    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
 
@@ -32,7 +28,7 @@ namespace EasyContainer.Service
                 
                 _logger.LogInformation("Number of routes: {number}", _targetRouteWrapper.Settings.RouteSettings.Count);
                 
-                await Task.Delay(1000, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(10000, stoppingToken).ConfigureAwait(false);
             }
         }
     }

@@ -29,7 +29,7 @@
             var configWrapper1 =  new SettingWrapper<MySettings1>(Mock.Of<ILogger<SettingWrapper<MySettings1>>>(), mySettings1);
             configWrapper1.OnReload += (o, args) =>
             {
-                reloadCount++;
+                Interlocked.Increment(ref reloadCount);
             };
             configWrapper1.OnReloadAsync += (o, args) =>
             {
@@ -42,8 +42,8 @@
             await configWrapper1.ReloadAsync(config).ConfigureAwait(false);
 
             // Post-conditions
-            Assert.That(reloadCount, Is.EqualTo(0));
-            Assert.That(Interlocked.Read(ref reloadAsyncCount), Is.EqualTo(0));
+            Assert.That(Interlocked.Read(ref reloadCount), Is.EqualTo(1));
+            Assert.That(Interlocked.Read(ref reloadAsyncCount), Is.EqualTo(1));
             
             // Action
             var originalMessage = config.GetValue<string>("MySettings1:Message");
@@ -52,7 +52,8 @@
             configWrapper1.Reload(config);
 
             // Post-conditions
-            Assert.That(reloadCount, Is.EqualTo(1));
+            Assert.That(Interlocked.Read(ref reloadCount), Is.EqualTo(2));
+            Assert.That(Interlocked.Read(ref reloadAsyncCount), Is.EqualTo(1));
             Assert.That(configWrapper1.Settings.Message, Is.EqualTo($"{originalMessage}-Updated-1"));
             
             // Action

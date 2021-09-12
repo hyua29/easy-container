@@ -2,8 +2,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyContainer", "EasyContainer\EasyContainer.csproj", "{DE99746C-52CC-49BC-ABF8-72B5129C8B02}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WorkerService", "WorkerService\WorkerService.csproj", "{BA090186-0A2D-48FC-A659-47B8156EE924}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyContainer.Lib.UnitTests", "EasyContainer.Lib.UnitTests\EasyContainer.Lib.UnitTests.csproj", "{FDCFF0C5-4100-43CB-A526-A5769EF53110}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyContainer.Lib", "EasyContainer.Lib\EasyContainer.Lib.csproj", "{60FF073A-D698-41E1-B2FA-62C30CC310E1}"
@@ -20,10 +18,6 @@ Global
 		{DE99746C-52CC-49BC-ABF8-72B5129C8B02}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DE99746C-52CC-49BC-ABF8-72B5129C8B02}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DE99746C-52CC-49BC-ABF8-72B5129C8B02}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BA090186-0A2D-48FC-A659-47B8156EE924}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BA090186-0A2D-48FC-A659-47B8156EE924}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BA090186-0A2D-48FC-A659-47B8156EE924}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BA090186-0A2D-48FC-A659-47B8156EE924}.Release|Any CPU.Build.0 = Release|Any CPU
 		{FDCFF0C5-4100-43CB-A526-A5769EF53110}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{FDCFF0C5-4100-43CB-A526-A5769EF53110}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDCFF0C5-4100-43CB-A526-A5769EF53110}.Release|Any CPU.ActiveCfg = Release|Any CPU

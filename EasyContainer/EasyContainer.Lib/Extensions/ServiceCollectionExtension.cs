@@ -8,19 +8,19 @@
     public static class ServiceCollectionExtension
     {
         public static void MonitorSetting<T>(this IServiceCollection serviceCollection, TimeSpan? debounceDuration = null)
-            where T : Setting, new()
+            where T : ISetting, new()
         {
             serviceCollection.AddSingleton<IConfigEventWatcher<T>>(provider =>
             {
                 var config = provider.GetRequiredService<IConfiguration>();
-                var logger = provider.GetRequiredService<ILogger<IConfigEventWatcher<T>>>();
+                var logger = provider.GetRequiredService<ILogger<ConfigEventWatcher<T>>>();
 
                 return new ConfigEventWatcher<T>(config, logger, debounceDuration);
             });
 
             serviceCollection.AddSingleton<ISettingWrapper<T>>(provider =>
             {
-                var logger = provider.GetRequiredService<ILogger<ISettingWrapper<T>>>();
+                var logger = provider.GetRequiredService<ILogger<SettingWrapper<T>>>();
                 var config = provider.GetRequiredService<IConfiguration>();
 
                 var configWrapper = new SettingWrapper<T>(logger, new T());
