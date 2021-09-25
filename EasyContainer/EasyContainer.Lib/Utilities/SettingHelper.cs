@@ -1,4 +1,4 @@
-﻿namespace EasyContainer.Lib
+﻿namespace EasyContainer.Lib.Utilities
 {
     using System;
 
@@ -8,10 +8,7 @@
             IFormatProvider provider = null)
         {
             var result = DateTime.ParseExact(datetimeString, "dd/MM/yyyy - HH:mm:ss", provider);
-
-            DateTime.SpecifyKind(result, isUtc ? DateTimeKind.Utc : DateTimeKind.Local);
-
-            return result;
+            return DateTime.SpecifyKind(result, isUtc ? DateTimeKind.Utc : DateTimeKind.Local);
         }
 
         public static DateTime? StringToDateTimeNoThrow(string datetimeString, bool isUtc,

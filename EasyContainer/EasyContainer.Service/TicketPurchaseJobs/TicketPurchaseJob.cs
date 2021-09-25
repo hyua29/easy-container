@@ -3,165 +3,184 @@
     using System;
     using System.Collections.Generic;
     using System.Drawing;
-    using System.Security.Cryptography;
     using System.Threading;
     using System.Threading.Tasks;
     using Lib;
     using Lib.Extensions;
+    using Lib.Utilities;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
+    using Nito.AsyncEx.Synchronous;
     using OpenQA.Selenium;
     using OpenQA.Selenium.Chrome;
     using Settings;
     using Settings.SettingExtensions;
 
-    public interface ITicketPurchaseJob : IAsyncDisposable
+    public interface ITicketPurchaseJob : IDisposable
 
     {
         void Schedule();
+
+        void CancelIfStarted();
     }
 
     public class TicketPurchaseJob : ITicketPurchaseJob
     {
-        private readonly CancellationToken _cancellationToken;
-
         private readonly ISettingWrapper<FreightSmartSettings> _freightSmartSettings;
 
-        private readonly ISettingWrapper<SeleniumSettings> _seleniumSettings;
+        private readonly LaneSettings _laneSettings;
 
-        private readonly RouteSettings _routeSettings;
+        private readonly ILogger _logger;
 
-        private readonly IReadOnlyCollection<Cookie> _cookieCollection;
+        private readonly Func<IReadOnlyCollection<Cookie>> _getCookies;
 
-        private readonly ILogger<TicketPurchaseJob> _logger;
+        private readonly Action<string> _cleanupAction;
 
         private readonly CancellationTokenSource _cancellationTokenSource;
 
-        private Task _taskHandle = null;
+        private Task _taskHandle;
 
         public TicketPurchaseJob(ISettingWrapper<FreightSmartSettings> freightSmartSettings,
-            ISettingWrapper<SeleniumSettings> seleniumSettings, RouteSettings routeSettings,
-            IReadOnlyCollection<Cookie> cookieCollection,
-            ILogger<TicketPurchaseJob> logger,
+            LaneSettings laneSettings,
+            ILogger logger,
+            Func<IReadOnlyCollection<Cookie>> getCookies = null,
+            Action<string> cleanupAction = null,
             CancellationToken cancellationToken = default)
         {
             _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _freightSmartSettings = freightSmartSettings;
-            _seleniumSettings = seleniumSettings;
-            _routeSettings = routeSettings;
-            _cookieCollection = cookieCollection;
-            _cancellationToken = cancellationToken;
+            _laneSettings = laneSettings;
             _logger = logger;
+            _getCookies = getCookies;
+            _cleanupAction = cleanupAction;
+            JobHash = _laneSettings.GetHash();
         }
 
         public void Schedule()
         {
+            if (_taskHandle != null)
+            {
+                throw new InvalidOperationException($"Each {nameof(TicketPurchaseJob)} can only be scheduled once");
+            }
+
             _taskHandle = RunAsync();
         }
+
+        public void CancelIfStarted()
+        {
+            Dispose();
+        }
+
+        public string JobHash { get; }
+
+        private Task WaitUntilAppropriateTimeAsync()
+        {
+            return MaybeWaitAsync(_laneSettings.GetReleaseTimeDateTime(),
+                _freightSmartSettings.Settings.GetPreparationOffsetTimeSpan());
+        }
+
         private async Task RunAsync()
         {
-            var details = JsonConvert.SerializeObject(_routeSettings);
-            var hash = SHA256.Create(details);
+            var details = JsonConvert.SerializeObject(_laneSettings);
 
             try
             {
-                var releaseTime = SettingHelper.StringToDateTimeNoThrow(_routeSettings.TicketReleaseTime, isUtc: false);
-                if (releaseTime.HasValue)
-                {
-                    await MaybeWaitAsync(releaseTime.Value, _seleniumSettings.Settings.GetPreparationDurationTimeSpan())
-                        .ConfigureAwait(false);
-                }
+                await WaitUntilAppropriateTimeAsync().ConfigureAwait(false);
 
-                var currentPosition = new Point(0, 0);
-                var positionShift = 10;
-                IList<Task> tasks = new List<Task>();
-                for (var i = 0; i < _routeSettings.WindowCount; i++)
-                {
-                    if (!_cancellationToken.IsCancellationRequested)
-                    {
-                        currentPosition = new Point(currentPosition.X + positionShift,
-                            currentPosition.Y + positionShift);
-
-                        var position = new Point(currentPosition.X, currentPosition.Y);
-
-                        tasks.Add(Task.Run(() => RunImplAsync(position), _cancellationToken));
-                    }
-                }
-
-                await Task.WhenAll(tasks).ConfigureAwait(false);
+                await RunImplAsyncPurchaseTicketAsync().ConfigureAwait(false);
             }
-            catch (OperationCanceledException e)
+            catch (OperationCanceledException)
             {
-                using (_logger.BeginScope(new Dictionary<string, object> {["BrowserJobHash"] = hash}))
-                {
-                    _logger.LogInformation("Browser job is cancelled");
-                    _logger.LogInformation($"Job detailed: {details}");
-                }
+                _logger.LogInformation("Browser job is cancelled");
+                _logger.LogInformation($"Job detailed: {details}");
             }
             catch (Exception e)
             {
-                using (_logger.BeginScope(new Dictionary<string, object> {["BrowserJobHash"] = hash}))
+                _logger.LogError(e, "Job cannot be executed");
+                _logger.LogInformation($"Job detailed: {details}");
+            }
+            finally
+            {
+                _cleanupAction?.Invoke(JobHash);
+            }
+        }
+
+        /// <summary>
+        /// Open Multiple browsers and attempt to purchase tickets
+        /// </summary>
+        /// <returns></returns>
+        private Task RunImplAsyncPurchaseTicketAsync()
+        {
+            var currentPosition = new Point(0, 0);
+            var positionShift = 10;
+            IList<Task> tasks = new List<Task>();
+            for (var i = 0; i < _laneSettings.WindowCount; i++)
+            {
+                if (!_cancellationTokenSource.IsCancellationRequested)
                 {
-                    _logger.LogError(e, "Job cannot be executed");
-                    _logger.LogInformation($"Job detailed: {details}");
+                    currentPosition = new Point(currentPosition.X + positionShift,
+                        currentPosition.Y + positionShift);
+
+                    var position = new Point(currentPosition.X, currentPosition.Y);
+
+                    tasks.Add(Task.Run(() => PurchaseTicketAsync(position), _cancellationTokenSource.Token));
                 }
+            }
+
+            return Task.WhenAll(tasks);
+        }
+
+        private async Task PurchaseTicketAsync(Point position)
+        {
+            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+
+            using var driver = CreateDriver(position);
+
+            var releaseTime = SettingHelper.StringToDateTimeNoThrow(_laneSettings.TicketReleaseTime, isUtc: false);
+            if (releaseTime.HasValue)
+            {
+                await MaybeWaitAsync(releaseTime.Value, _freightSmartSettings.Settings.GetPreExecutionTimeSpan())
+                    .ConfigureAwait(false);
+            }
+
+            var startTime = releaseTime ?? DateTime.Now;
+            var stopTime = startTime + TimeSpan.FromSeconds(_laneSettings.ExecutionDuration);
+
+            // Repeatedly attempt to buy the ticket until exceeding max attempt duration
+            while (true)
+            {
+                if (DateTime.Now > stopTime) break;
+                if (_freightSmartSettings.Settings.IsTesting)
+                {
+                    driver.FindElement(By.XPath("//div[@role='switch']")).Click();
+                    await Task.Delay(500, _cancellationTokenSource.Token).ConfigureAwait(false);
+                    Thread.Sleep(500);
+                    continue;
+                }
+
+                // TODO: Perform actual job
+                await Task.Delay(500, _cancellationTokenSource.Token).ConfigureAwait(false);
             }
         }
 
         /// <summary>
         /// Wait until target time. No wait if target time has elapsed
         /// </summary>
-        /// <param name="targetTime">Wake up time</param>
+        /// <param name="wakeUpTime">Wake up time</param>
         /// <param name="period">Wake up before target time</param>
-        private async Task MaybeWaitAsync(DateTime targetTime, TimeSpan? period = null)
+        private async Task MaybeWaitAsync(DateTime wakeUpTime, TimeSpan? period = null)
         {
-            var waitTime = targetTime - DateTime.Now;
+            var waitTime = wakeUpTime - DateTime.Now;
 
             if (waitTime > (period ?? TimeSpan.Zero))
-                await Task.Delay(waitTime, _cancellationToken).ConfigureAwait(false);
+                await Task.Delay(waitTime, _cancellationTokenSource.Token).ConfigureAwait(false);
         }
 
-        private async Task RunImplAsync(Point position)
-        {
-            _cancellationToken.ThrowIfCancellationRequested();
-
-            using var driver = CreateDriver(position);
-
-            driver.Navigate().GoToUrl(_freightSmartSettings.Settings.Domain);
-            driver.FindElement(By.XPath("//div[@class='ctrl-footer']//a")).Click();
-            if (!_seleniumSettings.Settings.IsTesting)
-            {
-                _cookieCollection.ForEach(c => { driver.Manage().Cookies.AddCookie(c); });
-                driver.Navigate().Refresh();
-            }
-
-            var releaseTime = SettingHelper.StringToDateTimeNoThrow(_routeSettings.TicketReleaseTime, isUtc: false);
-            if (releaseTime.HasValue)
-            {
-                await MaybeWaitAsync(releaseTime.Value, _seleniumSettings.Settings.GetPreExecutionTimeSpan())
-                    .ConfigureAwait(false);
-            }
-
-            var startTime = releaseTime ?? DateTime.Now;
-            var stopTime = startTime + TimeSpan.FromSeconds(_routeSettings.ExecutionDuration);
-
-            // Repeatedly attempt to buy the ticket until exceeding max attempt duration
-            while (true)
-            {
-                if (DateTime.Now > stopTime) break;
-                if (_seleniumSettings.Settings.IsTesting)
-                {
-                    driver.FindElement(By.XPath("//div[@role='switch']")).Click();
-                    await Task.Delay(500, _cancellationToken).ConfigureAwait(false);
-                    Thread.Sleep(500);
-                    continue;
-                }
-
-                // TODO: Perform actual job
-                await Task.Delay(500, _cancellationToken).ConfigureAwait(false);
-            }
-        }
-
+        /// <summary>
+        /// Create a driver and set cookies accordingly
+        /// </summary>
+        /// <param name="position">Position where the browser will be opened</param>
+        /// <returns></returns>
         private IWebDriver CreateDriver(Point position)
         {
             var options = new ChromeOptions();
@@ -173,14 +192,23 @@
             driver.Manage().Window.Position = position;
             driver.Manage().Cookies.DeleteAllCookies();
 
+            driver.Navigate().GoToUrl(_freightSmartSettings.Settings.Domain);
+            driver.FindElement(By.XPath("//div[@class='ctrl-footer']//a")).Click();
+            if (!_freightSmartSettings.Settings.IsTesting)
+            {
+                _getCookies().ForEach(c => { driver.Manage().Cookies.AddCookie(c); });
+                driver.Navigate().Refresh();
+            }
+
             return driver;
         }
 
-        public async ValueTask DisposeAsync()
+        public void Dispose()
         {
             _cancellationTokenSource?.Cancel();
             _cancellationTokenSource?.Dispose();
-            await _taskHandle.ConfigureAwait(false);
+            _taskHandle?.WaitWithoutException();
+            _taskHandle?.Dispose();
         }
     }
 }

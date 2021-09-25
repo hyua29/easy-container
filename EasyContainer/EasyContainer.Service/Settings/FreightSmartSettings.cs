@@ -11,5 +11,17 @@
         public string Domain { get; set; }
         
         public bool AutoLogin { get; set; }
+        
+        /// <summary>
+        ///Determine how must earlier browsers will be opened
+        /// </summary>
+        public int PreparationOffset { get; set; }
+
+        /// <summary>
+        /// Determine how much earlier than actually ticket release time the program should attempt to purchase tickets
+        /// </summary>
+        public int PreExecution { get; set; }
+        
+        public bool IsTesting { get; set; }
     }
 }

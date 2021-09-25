@@ -6,6 +6,7 @@
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
+    using Nito.AsyncEx;
 
     public interface ISettingWrapper<T> where T : ISetting, new()
     {
@@ -23,6 +24,7 @@
     public class SettingWrapper<T> : ISettingWrapper<T> where T : ISetting, new()
     {
         private readonly ILogger<SettingWrapper<T>> _logger;
+
         private readonly ReaderWriterLockSlim _settingLock;
 
         private T _setting;
@@ -68,6 +70,9 @@
 
         public void Reload(IConfiguration configuration)
         {
+            if (!configuration.GetSection(typeof(T).Name).Exists())
+                throw new ArgumentException($"Section {typeof(T).Name} not found");
+
             var newSettings = new T();
             configuration.Bind(typeof(T).Name, newSettings);
 
@@ -80,6 +85,9 @@
 
         public async Task ReloadAsync(IConfiguration configuration)
         {
+            if (!configuration.GetSection(typeof(T).Name).Exists())
+                throw new ArgumentException($"Section {typeof(T).Name} not found");
+
             var newSettings = new T();
             configuration.Bind(typeof(T).Name, newSettings);
 

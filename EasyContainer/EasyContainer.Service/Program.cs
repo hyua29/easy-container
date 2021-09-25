@@ -28,8 +28,7 @@ namespace EasyContainer.Service
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.MonitorSetting<FreightSmartSettings>();
-                    services.MonitorSetting<TargetRouteSettings>();
-                    services.MonitorSetting<SeleniumSettings>();
+                    services.MonitorSetting<TargetLaneSettings>();
 
                     services.AddHostedService<TicketPurchaseJobManager>();
                 });

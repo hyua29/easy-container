@@ -1,71 +1,57 @@
 ﻿namespace EasyContainer.Service.TicketPurchaseJobs
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
-    using System.Security.Cryptography;
+    using System.Collections.Immutable;
     using System.Threading;
     using System.Threading.Tasks;
-    using Extensions;
     using Lib;
     using Lib.Extensions;
     using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
-    using Newtonsoft.Json;
-    using OpenQA.Selenium;
-    using OpenQA.Selenium.Chrome;
-    using OpenQA.Selenium.Support.UI;
     using Settings;
+    using Settings.SettingExtensions;
 
-    public interface ITicketPurchaseJobManager : IAsyncDisposable
+    public interface ITicketPurchaseJobManager : IDisposable
     {
+        IImmutableDictionary<string, TicketPurchaseJob> ScheduledJobs { get; }
     }
 
     public class TicketPurchaseJobManager : BackgroundService, ITicketPurchaseJobManager
     {
         private readonly ILogger<TicketPurchaseJobManager> _logger;
 
-        private readonly ILoggerFactory _loggerFactory;
-
-        private readonly ISettingWrapper<SeleniumSettings> _seleniumSettings;
-
         private readonly ISettingWrapper<FreightSmartSettings> _freightSmartSettings;
 
-        private readonly ISettingWrapper<TargetRouteSettings> _targetRouteSettings;
+        private readonly ISettingWrapper<TargetLaneSettings> _targetLaneSettings;
 
-        private readonly IDictionary<SHA256, TicketPurchaseJob> _browserJobDict;
+        private readonly ConcurrentDictionary<string, TicketPurchaseJob> _browserJobDict;
 
-        private IWebDriver _loginDriver;
+        private readonly LoginDriver _loginDriver;
 
-        public TicketPurchaseJobManager(ILogger<TicketPurchaseJobManager> logger, ILoggerFactory loggerFactory,
-            ISettingWrapper<SeleniumSettings> seleniumSettings,
+        public TicketPurchaseJobManager(ILogger<TicketPurchaseJobManager> logger,
             ISettingWrapper<FreightSmartSettings> freightSmartSettings,
-            ISettingWrapper<TargetRouteSettings> targetRouteSettings)
+            ISettingWrapper<TargetLaneSettings> targetLaneSettings, LoginDriver loginDriver)
         {
             _logger = logger;
-            _loggerFactory = loggerFactory;
-            _seleniumSettings = seleniumSettings;
             _freightSmartSettings = freightSmartSettings;
-            _targetRouteSettings = targetRouteSettings;
-            _browserJobDict = new Dictionary<SHA256, TicketPurchaseJob>();
+            _targetLaneSettings = targetLaneSettings;
+            _browserJobDict = new ConcurrentDictionary<string, TicketPurchaseJob>();
+            _loginDriver = loginDriver;
         }
 
-        public IReadOnlyCollection<Cookie> Cookies => _loginDriver?.Manage().Cookies.AllCookies;
+        public IImmutableDictionary<string, TicketPurchaseJob> ScheduledJobs => _browserJobDict.ToImmutableDictionary();
+
+        public event EventHandler OnJobDictUpdated;
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (!stoppingToken.IsCancellationRequested)
-            {
-                Login();
-            }
-
+            _logger.LogInformation($"{nameof(TicketPurchaseJobManager)} has been started");
             while (!stoppingToken.IsCancellationRequested)
             {
-                _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-
-                var routeSettingDict = GetRouteSettingDict();
-
-                await UpdateJobDictAsync(routeSettingDict, stoppingToken).ConfigureAwait(false);
-
+                SchedulerJob(stoppingToken);
+                OnJobDictUpdated?.Invoke(this, EventArgs.Empty);
                 await Task.Delay(3000, stoppingToken).ConfigureAwait(false);
             }
         }
@@ -73,102 +59,62 @@
         /// <summary>
         /// Scheduler new jobs and remove old jobs
         /// </summary>
-        /// <param name="routeSettingDict"></param>
         /// <param name="token"></param>
-        internal async Task UpdateJobDictAsync(Dictionary<SHA256, RouteSettings> routeSettingDict,
-            CancellationToken token)
+        internal void SchedulerJob(CancellationToken token)
         {
+            var routeSettingDict = new Dictionary<string, LaneSettings>();
+            _targetLaneSettings.Settings.LaneSettings.ForEach(rs =>
+            {
+                var key = rs.GetHash();
+                routeSettingDict[key] = new LaneSettings(rs);
+            });
+
+            // Remove deleted jobs
+            foreach (var k in routeSettingDict.Keys)
+            {
+                _browserJobDict.TryRemove(k, out var jobWithWait);
+                jobWithWait?.Dispose();
+            }
+
             // Add new jobs
             routeSettingDict.Keys.ForEach(k =>
             {
                 if (!_browserJobDict.ContainsKey(k))
                 {
-                    _browserJobDict[k] = new TicketPurchaseJob(_freightSmartSettings, _seleniumSettings,
+                    var jobHash = routeSettingDict[k].GetHash();
+                    using var logger = _logger.BeginScope(new Dictionary<string, object>
+                        {["BrowserJobHash"] = jobHash});
+
+                    var job = new TicketPurchaseJob(_freightSmartSettings,
                         routeSettingDict[k],
-                        _loginDriver.Manage().Cookies.AllCookies, _loggerFactory.CreateLogger<TicketPurchaseJob>(),
+                        _logger,
+                        _loginDriver.GetOrReloadCookies,
+                        hash =>
+                        {
+                            var successful = _browserJobDict.TryGetValue(hash, out var value);
+                            value?.Dispose();
+                            if (successful)
+                            {
+                                _browserJobDict.TryRemove(hash, out _);
+                            }
+                        },
                         token);
+                    var added = _browserJobDict.TryAdd(k, job);
 
-                    _browserJobDict[k].Schedule();
+                    if (added && !_freightSmartSettings.Settings.IsTesting) job.Schedule();
                 }
             });
-
-            // Remove deleted jobs
-            foreach (var k in _browserJobDict.Keys)
-            {
-                if (!routeSettingDict.ContainsKey(k))
-                {
-                    await _browserJobDict[k].DisposeAsync().ConfigureAwait(false);
-                    _browserJobDict.Remove(k);
-                }
-            }
         }
 
-        internal Dictionary<SHA256, RouteSettings> GetRouteSettingDict()
+        public override void Dispose()
         {
-            var routeSettingDict = new Dictionary<SHA256, RouteSettings>();
-            _targetRouteSettings.Settings.RouteSettings.ForEach(rs =>
-            {
-                var key = SHA256.Create(JsonConvert.SerializeObject(rs));
-                routeSettingDict[key] = new RouteSettings(rs);
-            });
+            base.Dispose();
 
-            return routeSettingDict;
-        }
-
-        internal void Login()
-        {
-            var options = new ChromeOptions();
-            options.AddArguments("--disable-plugins-discovery");
-            options.AddArguments("--incognito");
-
-            _loginDriver = new ChromeDriver(options);
-
-            _loginDriver.Manage().Window.Maximize();
-            _loginDriver.Manage().Cookies.DeleteAllCookies();
-
-            _loginDriver.Navigate().GoToUrl(_freightSmartSettings.Settings.Domain);
-
-            if (_seleniumSettings.Settings.AutoLogin)
-            {
-                // Cookies
-                _loginDriver.FindElement(By.XPath("//div[@class='ctrl-footer']//a")).Click();
-                _loginDriver.FindElements(By.XPath("//div[@role='switch' and contains(@class,'is-checked')]")).ForEach(
-                    e => { e.Click(); });
-                _loginDriver
-                    .FindElement(By.XPath(
-                        "//button[@type='button' and contains(@class,'button--danger')]//*[text() = 'Update Preference']"))
-                    .Click();
-
-                // Sign in
-                var signin = _loginDriver.FindElement(By.XPath("//*[text()='Sign In/Up']"));
-                signin.Click();
-
-                var usernameField = _loginDriver.FindElement(By.XPath("//*[@name='login_dialog_username']"));
-                usernameField.Click();
-                usernameField.SendKeys(_freightSmartSettings.Settings.Username);
-
-                var passwordField = _loginDriver.FindElement(By.XPath("//*[@id='login-password-input']"));
-                passwordField.Click();
-                passwordField.SendKeys(_freightSmartSettings.Settings.Password);
-                passwordField.SendKeys(Keys.Enter);
-
-                _loginDriver.TryFindElement(By.XPath("//div[@aria-label='警告']//*[contains(text(), '确 定')]"),
-                    TimeSpan.FromSeconds(3))?.Click();
-            }
-
-            // Wait until logged in 
-            new WebDriverWait(_loginDriver, TimeSpan.FromMinutes(30)).Until(d =>
-                d.FindElement(By.XPath(
-                    $"//a[@class='user-name' and contains(text(), '{_freightSmartSettings.Settings.Username}')]")));
-        }
-
-        public async ValueTask DisposeAsync()
-        {
             _loginDriver?.Dispose();
 
             foreach (var v in _browserJobDict.Values)
             {
-                await v.DisposeAsync().ConfigureAwait(false);
+                v.Dispose();
             }
 
             _browserJobDict.Clear();
