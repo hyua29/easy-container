@@ -6,7 +6,7 @@ namespace EasyContainer.Service.Settings.SettingExtensions
 
     public static class FreightSmartSettingsExtension
     {
-        public static TimeSpan GetPreExecutionTimeSpan(this FreightSmartSettings fs) => TimeSpan.FromSeconds(fs.PreExecution);
+        public static TimeSpan GetPreExecutionOffsetTimeSpan(this FreightSmartSettings fs) => TimeSpan.FromSeconds(fs.PreExecutionOffset);
         
         public static TimeSpan GetPreparationOffsetTimeSpan(this FreightSmartSettings fs) => TimeSpan.FromSeconds(fs.PreparationOffset);
     }

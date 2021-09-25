@@ -8,11 +8,20 @@
     public class SettingHelperTests
     {
         [Test]
-        public void StringToDateTime_Test([Values] bool isUtc)
+        public void StringToDateTime_Test([Values] DateTimeKind kind)
         {
-            var dt = SettingHelper.StringToDateTime("10/12/1995 - 15:30:50", isUtc);
-            var expectedDt = new DateTime(1995, 12, 10, 15, 30, 50, isUtc ? DateTimeKind.Utc : DateTimeKind.Local);
-            Assert.That(dt.Kind == DateTimeKind.Utc, Is.EqualTo(isUtc));
+            var dt = SettingHelper.StringToDateTime("10/12/1995 - 15:30:50", kind);
+            var expectedDt = new DateTime(1995, 12, 10, 15, 30, 50, kind);
+            Assert.That(dt.Kind, Is.EqualTo(kind));
+            Assert.That(dt.Ticks, Is.EqualTo(expectedDt.Ticks));
+        }
+        
+        [Test]
+        public void StringToDate_Test([Values] DateTimeKind kind)
+        {
+            var dt = SettingHelper.StringToDate("10/12/1995", kind);
+            var expectedDt = new DateTime(1995, 12, 10, 0, 0, 0, kind);
+            Assert.That(dt.Kind, Is.EqualTo(kind));
             Assert.That(dt.Ticks, Is.EqualTo(expectedDt.Ticks));
         }
     }

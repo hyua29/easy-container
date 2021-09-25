@@ -6,7 +6,6 @@
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
-    using Nito.AsyncEx;
 
     public interface ISettingWrapper<T> where T : ISetting, new()
     {

@@ -29,7 +29,7 @@ namespace EasyContainer.Service
                 {
                     services.MonitorSetting<FreightSmartSettings>();
                     services.MonitorSetting<TargetLaneSettings>();
-
+                    services.AddSingleton<LoginDriver>();
                     services.AddHostedService<TicketPurchaseJobManager>();
                 });
         }

@@ -63,10 +63,14 @@
         internal void SchedulerJob(CancellationToken token)
         {
             var routeSettingDict = new Dictionary<string, LaneSettings>();
-            _targetLaneSettings.Settings.LaneSettings.ForEach(rs =>
+            _targetLaneSettings.Settings.LaneSettings.ForEach(ls =>
             {
-                var key = rs.GetHash();
-                routeSettingDict[key] = new LaneSettings(rs);
+                var key = ls.GetHash();
+                var lsCopy = new LaneSettings(ls);
+                if (ValidateLaneSettings(lsCopy))
+                {
+                    routeSettingDict[key] = lsCopy;
+                }
             });
 
             // Remove deleted jobs
@@ -85,10 +89,11 @@
                     using var logger = _logger.BeginScope(new Dictionary<string, object>
                         {["BrowserJobHash"] = jobHash});
 
-                    var job = new TicketPurchaseJob(_freightSmartSettings,
-                        routeSettingDict[k],
+                    var job = new TicketPurchaseJob(
                         _logger,
-                        _loginDriver.GetOrReloadCookies,
+                        _freightSmartSettings,
+                        routeSettingDict[k],
+                        _loginDriver,
                         hash =>
                         {
                             var successful = _browserJobDict.TryGetValue(hash, out var value);
@@ -98,12 +103,17 @@
                                 _browserJobDict.TryRemove(hash, out _);
                             }
                         },
-                        token);
+                        cancellationToken: token);
                     var added = _browserJobDict.TryAdd(k, job);
 
-                    if (added && !_freightSmartSettings.Settings.IsTesting) job.Schedule();
+                    if (added) job.Schedule();
                 }
             });
+        }
+
+        private bool ValidateLaneSettings(LaneSettings lsCopy)
+        {
+            return true;
         }
 
         public override void Dispose()

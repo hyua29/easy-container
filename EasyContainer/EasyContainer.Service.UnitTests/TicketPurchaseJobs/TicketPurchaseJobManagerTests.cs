@@ -33,6 +33,7 @@
             _freightSmartSettings = new SettingWrapper<FreightSmartSettings>(
                 _loggerFactory.CreateLogger<SettingWrapper<FreightSmartSettings>>(), new FreightSmartSettings());
             _freightSmartSettings.Reload(config);
+            _freightSmartSettings.Settings.IsTesting = true;
 
             _targetLaneSettingsSettings = new SettingWrapper<TargetLaneSettings>(
                 _loggerFactory.CreateLogger<SettingWrapper<TargetLaneSettings>>(), new TargetLaneSettings());

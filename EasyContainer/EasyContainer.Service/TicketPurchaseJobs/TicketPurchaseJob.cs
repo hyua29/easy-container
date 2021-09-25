@@ -3,11 +3,12 @@
     using System;
     using System.Collections.Generic;
     using System.Drawing;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using Extensions;
     using Lib;
     using Lib.Extensions;
-    using Lib.Utilities;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Nito.AsyncEx.Synchronous;
@@ -32,7 +33,9 @@
 
         private readonly ILogger _logger;
 
-        private readonly Func<IReadOnlyCollection<Cookie>> _getCookies;
+        private readonly LoginDriver _loginDriver;
+
+        private readonly IDateTimeSupplier _dateTimeSupplier;
 
         private readonly Action<string> _cleanupAction;
 
@@ -40,21 +43,39 @@
 
         private Task _taskHandle;
 
-        public TicketPurchaseJob(ISettingWrapper<FreightSmartSettings> freightSmartSettings,
-            LaneSettings laneSettings,
+        public TicketPurchaseJob(
             ILogger logger,
-            Func<IReadOnlyCollection<Cookie>> getCookies = null,
+            ISettingWrapper<FreightSmartSettings> freightSmartSettings,
+            LaneSettings laneSettings,
+            LoginDriver loginDriver,
             Action<string> cleanupAction = null,
+            IDateTimeSupplier dateTimeSupplier = null,
             CancellationToken cancellationToken = default)
         {
             _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _freightSmartSettings = freightSmartSettings;
             _laneSettings = laneSettings;
             _logger = logger;
-            _getCookies = getCookies;
+            _loginDriver = loginDriver;
             _cleanupAction = cleanupAction;
+            _dateTimeSupplier = dateTimeSupplier ?? new DateTimeSupplier();
             JobHash = _laneSettings.GetHash();
         }
+
+        /// <summary>
+        /// For testing
+        /// </summary>
+        internal event EventHandler OnPreparationWaitStarted;
+
+        /// <summary>
+        /// For testing
+        /// </summary>
+        internal event EventHandler OnPreExecutionWaitStarted;
+
+        /// <summary>
+        /// For testing
+        /// </summary>
+        internal event EventHandler OnJobStarted;
 
         public void Schedule()
         {
@@ -73,19 +94,15 @@
 
         public string JobHash { get; }
 
-        private Task WaitUntilAppropriateTimeAsync()
-        {
-            return MaybeWaitAsync(_laneSettings.GetReleaseTimeDateTime(),
-                _freightSmartSettings.Settings.GetPreparationOffsetTimeSpan());
-        }
-
         private async Task RunAsync()
         {
             var details = JsonConvert.SerializeObject(_laneSettings);
 
             try
             {
-                await WaitUntilAppropriateTimeAsync().ConfigureAwait(false);
+                await MaybeWaitAsync(_laneSettings.GetReleaseTimeDateTime(),
+                    _freightSmartSettings.Settings.GetPreparationOffsetTimeSpan(),
+                    () => OnPreparationWaitStarted?.Invoke(this, EventArgs.Empty)).ConfigureAwait(false);
 
                 await RunImplAsyncPurchaseTicketAsync().ConfigureAwait(false);
             }
@@ -136,30 +153,62 @@
 
             using var driver = CreateDriver(position);
 
-            var releaseTime = SettingHelper.StringToDateTimeNoThrow(_laneSettings.TicketReleaseTime, isUtc: false);
-            if (releaseTime.HasValue)
+            if (!_freightSmartSettings.Settings.IsTesting)
             {
-                await MaybeWaitAsync(releaseTime.Value, _freightSmartSettings.Settings.GetPreExecutionTimeSpan())
-                    .ConfigureAwait(false);
+                driver.Navigate().GoToUrl("https://freightsmart.oocl.com/prebooking");
+
+                var controlPanel = driver.FindElement(By.XPath("(//div[text()='目的港']/.."));
+
+                var pol = controlPanel.FindElement(By.XPath("//input)[1]"));
+                pol.Click();
+                pol.SendKeys(_laneSettings.PortOfLoading);
+                driver.FindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfLoading}')]")).Click();
+
+                var pod = controlPanel.FindElement(By.XPath("//input)[2]"));
+                pod.Click();
+                pod.SendKeys(_laneSettings.PortOfDestination);
+                driver.FindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfDestination}')]")).Click();
+
+                var etol = controlPanel.FindElement(By.XPath("//input)[3]"));
+                etol.Click();
+                etol.SendKeys(_laneSettings.GetEarliestTimeOfDepartureDate().ToString("dd-MM-yyyy"));
+
+                var ltol = controlPanel.FindElement(By.XPath("//input)[4]"));
+                ltol.Click();
+                ltol.SendKeys(_laneSettings.GetLatestTimeOfDepartureDate().ToString("dd-MM-yyyy"));
             }
 
-            var startTime = releaseTime ?? DateTime.Now;
-            var stopTime = startTime + TimeSpan.FromSeconds(_laneSettings.ExecutionDuration);
+            var releaseTime = _laneSettings.GetReleaseTimeDateTime();
+            await MaybeWaitAsync(releaseTime, _freightSmartSettings.Settings.GetPreExecutionOffsetTimeSpan(),
+                    () => OnPreExecutionWaitStarted?.Invoke(this, EventArgs.Empty))
+                .ConfigureAwait(false);
 
+            var stopTime = releaseTime + TimeSpan.FromSeconds(_laneSettings.ExecutionDuration);
+
+            OnJobStarted?.Invoke(this, EventArgs.Empty);
             // Repeatedly attempt to buy the ticket until exceeding max attempt duration
-            while (true)
+            while (_dateTimeSupplier.Now < stopTime)
             {
-                if (DateTime.Now > stopTime) break;
                 if (_freightSmartSettings.Settings.IsTesting)
                 {
-                    driver.FindElement(By.XPath("//div[@role='switch']")).Click();
-                    await Task.Delay(500, _cancellationTokenSource.Token).ConfigureAwait(false);
-                    Thread.Sleep(500);
+                    _logger.LogInformation("Testing mode is enabled, no action taken");
+                    await Task.Delay(1000, _cancellationTokenSource.Token).ConfigureAwait(false);
                     continue;
                 }
 
-                // TODO: Perform actual job
-                await Task.Delay(500, _cancellationTokenSource.Token).ConfigureAwait(false);
+                driver.FindElement(By.XPath($"//span[contains(text(), '查 询')]")).Click();
+                driver.FindElement(
+                    By.XPath(
+                        "//div[@id='prebookingGroupTable' and @class='product-result-content']")); // Make sure page is fully loaded
+                var lane = driver.FindElements(By.XPath(
+                        $"//span[contains(text(), '{_laneSettings.LaneId}')]/../..//span[contains(text(), '直接购买')]"))
+                    ?.First();
+
+                if (lane != null)
+                {
+                    lane.Click();
+                    break;
+                }
             }
         }
 
@@ -168,12 +217,16 @@
         /// </summary>
         /// <param name="wakeUpTime">Wake up time</param>
         /// <param name="period">Wake up before target time</param>
-        private async Task MaybeWaitAsync(DateTime wakeUpTime, TimeSpan? period = null)
+        /// <param name="action">Action that needs to be taken fore entering the wait</param>
+        private async Task MaybeWaitAsync(DateTime wakeUpTime, TimeSpan? period = null, Action action = null)
         {
-            var waitTime = wakeUpTime - DateTime.Now;
+            var waitTime = wakeUpTime - _dateTimeSupplier.Now - (period ?? TimeSpan.Zero);
 
-            if (waitTime > (period ?? TimeSpan.Zero))
+            if (waitTime > TimeSpan.Zero)
+            {
+                action?.Invoke();
                 await Task.Delay(waitTime, _cancellationTokenSource.Token).ConfigureAwait(false);
+            }
         }
 
         /// <summary>
@@ -194,9 +247,15 @@
 
             driver.Navigate().GoToUrl(_freightSmartSettings.Settings.Domain);
             driver.FindElement(By.XPath("//div[@class='ctrl-footer']//a")).Click();
+            driver.FindElements(By.XPath("//div[@role='switch' and contains(@class,'is-checked')]")).ForEach(
+                e => { e.Click(); });
+            driver
+                .FindElement(By.XPath(
+                    "//button[@type='button' and contains(@class,'button--danger')]//*[text() = 'Update Preference']"))
+                .Click();
             if (!_freightSmartSettings.Settings.IsTesting)
             {
-                _getCookies().ForEach(c => { driver.Manage().Cookies.AddCookie(c); });
+                _loginDriver.GetOrReloadCookies().ForEach(c => { driver.Manage().Cookies.AddCookie(c); });
                 driver.Navigate().Refresh();
             }
 

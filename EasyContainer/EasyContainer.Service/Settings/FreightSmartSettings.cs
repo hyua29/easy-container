@@ -9,9 +9,9 @@
         public string Password { get; set; }
 
         public string Domain { get; set; }
-        
+
         public bool AutoLogin { get; set; }
-        
+
         /// <summary>
         ///Determine how must earlier browsers will be opened
         /// </summary>
@@ -20,8 +20,8 @@
         /// <summary>
         /// Determine how much earlier than actually ticket release time the program should attempt to purchase tickets
         /// </summary>
-        public int PreExecution { get; set; }
-        
+        public int PreExecutionOffset { get; set; }
+
         public bool IsTesting { get; set; }
     }
 }
