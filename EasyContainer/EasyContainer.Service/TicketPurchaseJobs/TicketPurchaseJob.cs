@@ -157,25 +157,21 @@
             {
                 driver.Navigate().GoToUrl("https://freightsmart.oocl.com/prebooking");
 
-                var controlPanel = driver.FindElement(By.XPath("(//div[text()='目的港']/.."));
-
-                var pol = controlPanel.FindElement(By.XPath("//input)[1]"));
-                pol.Click();
+                var pol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[1]"));
                 pol.SendKeys(_laneSettings.PortOfLoading);
-                driver.FindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfLoading}')]")).Click();
+                // driver.TryFindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfLoading}')]"),
+                //     TimeSpan.FromSeconds(3)).Click();
 
-                var pod = controlPanel.FindElement(By.XPath("//input)[2]"));
-                pod.Click();
+                var pod = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[2]"));
                 pod.SendKeys(_laneSettings.PortOfDestination);
-                driver.FindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfDestination}')]")).Click();
+                // driver.TryFindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfDestination}')]"),
+                //     TimeSpan.FromSeconds(3)).Click();
 
-                var etol = controlPanel.FindElement(By.XPath("//input)[3]"));
-                etol.Click();
-                etol.SendKeys(_laneSettings.GetEarliestTimeOfDepartureDate().ToString("dd-MM-yyyy"));
+                var etol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[3]"));
+                etol.SendKeys(_laneSettings.GetEarliestTimeOfDepartureDate().ToString("yyyy-MM-dd"));
 
-                var ltol = controlPanel.FindElement(By.XPath("//input)[4]"));
-                ltol.Click();
-                ltol.SendKeys(_laneSettings.GetLatestTimeOfDepartureDate().ToString("dd-MM-yyyy"));
+                var ltol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[4]"));
+                ltol.SendKeys(_laneSettings.GetLatestTimeOfDepartureDate().ToString("yyyy-MM-dd"));
             }
 
             var releaseTime = _laneSettings.GetReleaseTimeDateTime();
@@ -186,6 +182,7 @@
             var stopTime = releaseTime + TimeSpan.FromSeconds(_laneSettings.ExecutionDuration);
 
             OnJobStarted?.Invoke(this, EventArgs.Empty);
+
             // Repeatedly attempt to buy the ticket until exceeding max attempt duration
             while (_dateTimeSupplier.Now < stopTime)
             {

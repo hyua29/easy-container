@@ -18,7 +18,8 @@
 
         private IWebDriver _loginDriver;
 
-        public LoginDriver(ILogger<LoginDriver> logger,
+        public LoginDriver(
+            ILogger<LoginDriver> logger,
             ISettingWrapper<FreightSmartSettings> freightSmartSettings)
         {
             _logger = logger;
@@ -81,13 +82,15 @@
 
                 _loginDriver.TryFindElement(By.XPath("//div[@aria-label='警告']//*[contains(text(), '确 定')]"),
                     TimeSpan.FromSeconds(3))?.Click();
+
+                _loginDriver.Manage().Window.Minimize();
             }
 
             // Wait until logged in 
             new WebDriverWait(_loginDriver, TimeSpan.FromMinutes(30)).Until(d =>
                 d.FindElement(By.XPath(
                     $"//a[@class='user-name' and contains(text(), '{_freightSmartSettings.Settings.Username}')]")));
-            
+
             _logger.LogInformation($"Login Successful: {_freightSmartSettings.Settings.Domain}");
         }
 

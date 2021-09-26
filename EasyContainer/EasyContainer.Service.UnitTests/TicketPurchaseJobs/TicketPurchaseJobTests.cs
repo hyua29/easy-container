@@ -6,6 +6,7 @@
     using Lib.Utilities;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Logging.Console;
     using Moq;
     using NUnit.Framework;
     using Service.TicketPurchaseJobs;
@@ -28,7 +29,12 @@
                 .AddJsonFile("appsettings.json", false)
                 .Build();
 
-            _loggerFactory = new LoggerFactory();
+            _loggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder
+                    .AddConsole()
+                    .AddEventLog();
+            });
 
             _freightSmartSettings = new SettingWrapper<FreightSmartSettings>(
                 _loggerFactory.CreateLogger<SettingWrapper<FreightSmartSettings>>(), new FreightSmartSettings());
@@ -44,10 +50,14 @@
         public void Schedule_JobStartedImmediately_Test(string releaseTime)
         {
             // Pre-Conditions
-            var loginDriver = new LoginDriver( _loggerFactory.CreateLogger<LoginDriver>(), _freightSmartSettings);
+            var loginDriver = new LoginDriver(_loggerFactory.CreateLogger<LoginDriver>(), _freightSmartSettings);
             _freightSmartSettings.Settings.IsTesting = false;
             var ls = new LaneSettings
-                {LaneId = "s21", ExecutionDuration = 10, WindowCount = 1, TicketReleaseTime = releaseTime};
+            {
+                LaneId = "s21", ExecutionDuration = 10, WindowCount = 1, TicketReleaseTime = releaseTime,
+                PortOfLoading = "温哥华", PortOfDestination = "宁波市", EarliestTimeOfDeparture = "2021-09-30",
+                LatestTimeOfDeparture = "2021-10-20"
+            };
             using var job = new TicketPurchaseJob(
                 _loggerFactory.CreateLogger<TicketPurchaseJob>(),
                 _freightSmartSettings,

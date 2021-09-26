@@ -23,6 +23,7 @@ namespace EasyContainer.Service
                 .ConfigureLogging(logBuilder =>
                 {
                     logBuilder.ClearProviders();
+                    logBuilder.AddConsole();
                     logBuilder.AddLog4Net("log4net.config");
                 })
                 .ConfigureServices((hostContext, services) =>

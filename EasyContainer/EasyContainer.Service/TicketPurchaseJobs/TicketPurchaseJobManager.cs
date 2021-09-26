@@ -4,6 +4,7 @@
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Collections.Immutable;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using Lib;
@@ -30,9 +31,11 @@
 
         private readonly LoginDriver _loginDriver;
 
-        public TicketPurchaseJobManager(ILogger<TicketPurchaseJobManager> logger,
+        public TicketPurchaseJobManager(
+            ILogger<TicketPurchaseJobManager> logger,
             ISettingWrapper<FreightSmartSettings> freightSmartSettings,
-            ISettingWrapper<TargetLaneSettings> targetLaneSettings, LoginDriver loginDriver)
+            ISettingWrapper<TargetLaneSettings> targetLaneSettings,
+            LoginDriver loginDriver)
         {
             _logger = logger;
             _freightSmartSettings = freightSmartSettings;
@@ -113,7 +116,19 @@
 
         private bool ValidateLaneSettings(LaneSettings lsCopy)
         {
-            return true;
+            var errorList = new List<string>();
+
+            if (lsCopy.LaneId == null) errorList.Add(nameof(LaneSettings.LaneId));
+
+            if (lsCopy.PortOfLoading == null) errorList.Add(nameof(LaneSettings.PortOfLoading));
+
+            if (lsCopy.PortOfDestination == null) errorList.Add(nameof(LaneSettings.PortOfDestination));
+
+            if (lsCopy.EarliestTimeOfDeparture == null) errorList.Add(nameof(LaneSettings.EarliestTimeOfDeparture));
+
+            if (lsCopy.LatestTimeOfDeparture == null) errorList.Add(nameof(LaneSettings.LatestTimeOfDeparture));
+
+            return !errorList.Any();
         }
 
         public override void Dispose()
