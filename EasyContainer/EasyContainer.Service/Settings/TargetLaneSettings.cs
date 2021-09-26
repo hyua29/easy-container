@@ -15,7 +15,7 @@
         public int WindowCount { get; set; }
 
         public string TicketReleaseTime { get; set; }
-        
+
         public int ExecutionDuration { get; set; }
 
         public string PortOfLoading { get; set; }
@@ -25,6 +25,8 @@
         public string EarliestTimeOfDeparture { get; set; }
 
         public string LatestTimeOfDeparture { get; set; }
+
+        public int HqQuantity { get; set; }
 
         public LaneSettings()
         {

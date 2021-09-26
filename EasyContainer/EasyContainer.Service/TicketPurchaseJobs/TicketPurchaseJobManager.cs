@@ -128,6 +128,8 @@
 
             if (lsCopy.LatestTimeOfDeparture == null) errorList.Add(nameof(LaneSettings.LatestTimeOfDeparture));
 
+            if (lsCopy.HqQuantity < 1) errorList.Add(nameof(LaneSettings.HqQuantity));
+
             return !errorList.Any();
         }
 

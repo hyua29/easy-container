@@ -3,10 +3,8 @@
     using System;
     using System.Collections.Generic;
     using System.Drawing;
-    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
-    using Extensions;
     using Lib;
     using Lib.Extensions;
     using Microsoft.Extensions.Logging;
@@ -40,6 +38,8 @@
         private readonly Action<string> _cleanupAction;
 
         private readonly CancellationTokenSource _cancellationTokenSource;
+
+        private long _orderPlaced = 0;
 
         private Task _taskHandle;
 
@@ -94,6 +94,16 @@
 
         public string JobHash { get; }
 
+        public bool OrderPlaced
+        {
+            get
+            {
+                Interlocked.Read(ref _orderPlaced);
+                return _orderPlaced == 1;
+            }
+            private set => Interlocked.Exchange(ref _orderPlaced, value ? 1 : 0);
+        }
+
         private async Task RunAsync()
         {
             var details = JsonConvert.SerializeObject(_laneSettings);
@@ -104,7 +114,7 @@
                     _freightSmartSettings.Settings.GetPreparationOffsetTimeSpan(),
                     () => OnPreparationWaitStarted?.Invoke(this, EventArgs.Empty)).ConfigureAwait(false);
 
-                await RunImplAsyncPurchaseTicketAsync().ConfigureAwait(false);
+                await RunImplAsync().ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -120,13 +130,23 @@
             {
                 _cleanupAction?.Invoke(JobHash);
             }
+
+
+            if (OrderPlaced)
+            {
+                _logger.LogInformation($"Successfully placed order for:\n{details}");
+            }
+            else
+            {
+                _logger.LogInformation($"Unable to place order for:\n{details}");
+            }
         }
 
         /// <summary>
         /// Open Multiple browsers and attempt to purchase tickets
         /// </summary>
         /// <returns></returns>
-        private Task RunImplAsyncPurchaseTicketAsync()
+        private Task RunImplAsync()
         {
             var currentPosition = new Point(0, 0);
             var positionShift = 10;
@@ -155,23 +175,7 @@
 
             if (!_freightSmartSettings.Settings.IsTesting)
             {
-                driver.Navigate().GoToUrl("https://freightsmart.oocl.com/prebooking");
-
-                var pol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[1]"));
-                pol.SendKeys(_laneSettings.PortOfLoading);
-                // driver.TryFindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfLoading}')]"),
-                //     TimeSpan.FromSeconds(3)).Click();
-
-                var pod = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[2]"));
-                pod.SendKeys(_laneSettings.PortOfDestination);
-                // driver.TryFindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfDestination}')]"),
-                //     TimeSpan.FromSeconds(3)).Click();
-
-                var etol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[3]"));
-                etol.SendKeys(_laneSettings.GetEarliestTimeOfDepartureDate().ToString("yyyy-MM-dd"));
-
-                var ltol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[4]"));
-                ltol.SendKeys(_laneSettings.GetLatestTimeOfDepartureDate().ToString("yyyy-MM-dd"));
+                NavigateToSearchPage(driver);
             }
 
             var releaseTime = _laneSettings.GetReleaseTimeDateTime();
@@ -184,8 +188,10 @@
             OnJobStarted?.Invoke(this, EventArgs.Empty);
 
             // Repeatedly attempt to buy the ticket until exceeding max attempt duration
-            while (_dateTimeSupplier.Now < stopTime)
+            while (_dateTimeSupplier.Now < stopTime && !OrderPlaced)
             {
+                _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+
                 if (_freightSmartSettings.Settings.IsTesting)
                 {
                     _logger.LogInformation("Testing mode is enabled, no action taken");
@@ -197,16 +203,67 @@
                 driver.FindElement(
                     By.XPath(
                         "//div[@id='prebookingGroupTable' and @class='product-result-content']")); // Make sure page is fully loaded
-                var lane = driver.FindElements(By.XPath(
-                        $"//span[contains(text(), '{_laneSettings.LaneId}')]/../..//span[contains(text(), '直接购买')]"))
-                    ?.First();
 
-                if (lane != null)
+                try
                 {
-                    lane.Click();
-                    break;
+                    AttemptToPlaceOrder(driver);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Received error when attempting to place the order, retrying...");
                 }
             }
+        }
+
+        private void NavigateToSearchPage(IWebDriver driver)
+        {
+            driver.Navigate().GoToUrl("https://freightsmart.oocl.com/prebooking");
+
+            var pol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[1]"));
+            pol.SendKeys(_laneSettings.PortOfLoading);
+            // driver.TryFindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfLoading}')]"),
+            //     TimeSpan.FromSeconds(3)).Click();
+
+            var pod = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[2]"));
+            pod.SendKeys(_laneSettings.PortOfDestination);
+            // driver.TryFindElement(By.XPath($"//span[contains(text(), '{_laneSettings.PortOfDestination}')]"),
+            //     TimeSpan.FromSeconds(3)).Click();
+
+            var etol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[3]"));
+            etol.Clear();
+            etol.SendKeys(_laneSettings.GetEarliestTimeOfDepartureDate().ToString("yyyy-MM-dd"));
+
+            var ltol = driver.FindElement(By.XPath("(//div[text()='Origin']/..//input)[4]"));
+            ltol.Clear();
+            ltol.SendKeys(_laneSettings.GetLatestTimeOfDepartureDate().ToString("yyyy-MM-dd"));
+        }
+
+        /// <summary>
+        /// This method might throw if the website runs out of stock in the middle of the workflow
+        /// </summary>
+        /// <param name="driver"></param>
+        private void AttemptToPlaceOrder(IWebDriver driver)
+        {
+            var lanes = driver.FindElements(By.XPath(
+                $"//span[contains(text(), '{_laneSettings.LaneId}')]/../..//span[contains(text(), '直接购买')]"));
+
+            if (lanes.Count == 0) return;
+
+            lanes.ForEach(l =>
+            {
+                l.Click();
+                var teuBlock = l.FindElement(By.XPath("./../../../..//td//*[contains(text(), 'TEU')]")).Text;
+                var successful = int.TryParse(teuBlock.Replace(" ", "").Replace("TEU", ""), out var teu);
+                if (successful && teu > 2 * _laneSettings.HqQuantity)
+                {
+                    l.FindElement(By.XPath("./../../../..//*[text()='购买']"));
+                    driver.FindElement(By.XPath("//*[text()='总库存']/../../..//*[text()='40HQ']/..//input"))
+                        .SendKeys(_laneSettings.HqQuantity.ToString());
+                    driver.FindElement(By.XPath("//button//*[contains(text(), '继续')]")).Click();
+                    // driver.FindElement(By.XPath("//button//*[contains(text(), '立即下单')]")).Click(); // This will place the order
+                    OrderPlaced = true;
+                }
+            });
         }
 
         /// <summary>
